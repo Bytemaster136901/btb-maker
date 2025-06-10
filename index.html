@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>.btb viewer</title>
+<title>.btb maker</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Roboto+Mono&display=swap');
   body {
@@ -57,23 +57,17 @@
     opacity: 0.3;
     cursor: default;
   }
-  canvas {
-    width: 100%;
-    height: 150px;
-    background: #111;
-    border: 1px solid #fff;
-    border-radius: 4px;
-  }
-  #fileInput {
+  #downloadLink {
     margin-top: 15px;
+    display: block;
+    color: #fff;
+    text-decoration: underline;
+    cursor: pointer;
   }
   #footer-links {
     margin-top: 25px;
     font-size: 0.9em;
     text-align: center;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
   }
   #footer-links a {
     color: #fff;
@@ -85,7 +79,7 @@
 </style>
 </head>
 <body>
-  <h1>.btb viewer</h1>
+  <h1>.btb maker</h1>
 
   <label for="code">code (use variable t):</label>
   <textarea id="code" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off">t%256</textarea>
@@ -105,210 +99,55 @@
     </div>
   </div>
 
-  <button id="playBtn" onclick="play()">play</button>
-  <button id="stopBtn" onclick="stop()" disabled>stop</button>
+  <button id="exportBtn" onclick="exportFile()">export .btb/.sbtb/.fltb</button>
 
-  <label for="fileInput" style="margin-top: 20px;">import .btb/.sbtb/.fltb file:</label>
-  <input type="file" id="fileInput" accept=".btb,.sbtb,.fltb" />
-
-  <canvas id="waveform" width="800" height="150"></canvas>
+  <a id="downloadLink" style="display:none;"></a>
 
   <div id="footer-links">
-    <a href="https://bytemaster136901.github.io/btb-maker/" target="_blank" rel="noopener noreferrer">play your file here: https://bytemaster136901.github.io/btb-maker/</a>
-    <a href="https://bytemaster136901.github.io/btb-maker/" target="_blank" rel="noopener noreferrer">make your file here: https://bytemaster136901.github.io/btb-maker/</a>
+    <a href="https://bytemaster136901.github.io/btb-viewer/" target="_blank" rel="noopener noreferrer">play your file here: https://bytemaster136901.github.io/btb-viewer/</a>
   </div>
 
 <script>
-  let audioCtx = null;
-  let playing = false;
-  let codeFn = () => 0;
-  let t = 0;
-  const bufferSize = 2048;
-  let scriptNode = null;
-
-  const canvas = document.getElementById("waveform");
-  const ctx = canvas.getContext("2d");
-
-  let waveformBuffer = [];
-  const waveformMaxLength = canvas.width;
-
-  function compileCode() {
-    const codeText = document.getElementById("code").value.trim();
-    try {
-      codeFn = new Function(
-        "t", "sin", "cos", "tan", "abs", "sqrt", "log", "exp", "pow", "PI",
-        "return " + codeText + ";"
-      );
-      return true;
-    } catch(e) {
-      alert("compile error: " + e.message);
-      return false;
+  function exportFile() {
+    const code = document.getElementById("code").value.trim();
+    if (!code) {
+      alert("code cannot be empty");
+      return;
     }
-  }
-
-  function play() {
-    if (playing) return;
-    if (!compileCode()) return;
-
+    const type = document.getElementById("type").value;
     const hz = Number(document.getElementById("hz").value);
     if (!hz || hz < 1000 || hz > 192000) {
       alert("sample rate must be between 1000 and 192000 hz");
       return;
     }
-    const type = document.getElementById("type").value;
 
-    if (audioCtx) {
-      audioCtx.close();
-      audioCtx = null;
-    }
-
-    try {
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: hz });
-    } catch(e) {
-      alert("audiocontext creation failed with sampleRate=" + hz + "\n" + e.message);
-      return;
-    }
-
-    t = 0;
-    playing = true;
-    waveformBuffer = [];
-
-    scriptNode = audioCtx.createScriptProcessor(bufferSize, 0, 1);
-    scriptNode.onaudioprocess = function(audioProcessingEvent) {
-      const outputBuffer = audioProcessingEvent.outputBuffer;
-      const outputData = outputBuffer.getChannelData(0);
-
-      for(let i=0; i<outputBuffer.length; i++) {
-        let val;
-        try {
-          val = codeFn(
-            t, Math.sin, Math.cos, Math.tan,
-            Math.abs, Math.sqrt, Math.log, Math.exp,
-            Math.pow, Math.PI
-          );
-          if(typeof val !== "number" || !isFinite(val) || isNaN(val)) val = 0;
-        } catch {
-          val = 0;
-        }
-
-        if(type === "bytebeat") {
-          val = (val & 255) / 128 - 1;
-        } else if(type === "signed") {
-          val = ((val << 24) >> 24) / 128;
-        } else {
-          val = Math.max(-1, Math.min(1, val));
-        }
-        outputData[i] = val;
-
-        waveformBuffer.push(val);
-        if(waveformBuffer.length > waveformMaxLength) waveformBuffer.shift();
-
-        t++;
-      }
-      drawWaveform();
+    const data = {
+      code: code,
+      hz: hz,
+      type: type
     };
 
-    scriptNode.connect(audioCtx.destination);
+    const jsonStr = JSON.stringify(data, null, 2);
+    const blob = new Blob([jsonStr], { type: "application/json" });
 
-    document.getElementById("playBtn").disabled = true;
-    document.getElementById("stopBtn").disabled = false;
-  }
+    let ext = "";
+    if (type === "bytebeat") ext = "btb";
+    else if (type === "signed") ext = "sbtb";
+    else if (type === "float") ext = "fltb";
+    else ext = "btb";
 
-  function stop() {
-    if (!playing) return;
-    playing = false;
-    if (scriptNode) {
-      scriptNode.disconnect();
-      scriptNode.onaudioprocess = null;
-      scriptNode = null;
-    }
-    if (audioCtx) {
-      audioCtx.close();
-      audioCtx = null;
-    }
-    document.getElementById("playBtn").disabled = false;
-    document.getElementById("stopBtn").disabled = true;
-    clearCanvas();
-    waveformBuffer = [];
-  }
+    const filename = `export-${Date.now()}.${ext}`;
+    const url = URL.createObjectURL(blob);
 
-  function drawWaveform() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.beginPath();
-    const midY = canvas.height / 2;
-
-    for(let i = 0; i < waveformBuffer.length; i++) {
-      let x = (i / waveformMaxLength) * canvas.width;
-      let y = midY - waveformBuffer[i] * midY;
-      if(i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-
-    ctx.strokeStyle = "#fff";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-  }
-
-  function clearCanvas() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-  }
-
-  document.getElementById('fileInput').addEventListener('change', e => {
-    if (playing) stop();
-
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const ext = file.name.split('.').pop().toLowerCase();
-    if (!['btb','sbtb','fltb'].includes(ext)) {
-      alert('unsupported file extension');
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = function(evt) {
-      try {
-        const json = JSON.parse(evt.target.result);
-
-        if (!json.code || !json.hz || !json.type) {
-          alert("file missing required fields: code, hz, or type");
-          return;
-        }
-
-        document.getElementById("code").value = json.code;
-        document.getElementById("hz").value = json.hz;
-
-        if (json.type === "bytebeat" && ext !== "btb") {
-          alert("Warning: file extension and type mismatch");
-        }
-        if (json.type === "signed" && ext !== "sbtb") {
-          alert("Warning: file extension and type mismatch");
-        }
-        if (json.type === "float" && ext !== "fltb") {
-          alert("Warning: file extension and type mismatch");
-        }
-
-        const typeSelect = document.getElementById("type");
-        if(["bytebeat","signed","float"].includes(json.type)) {
-          typeSelect.value = json.type;
-        } else {
-          alert("unknown type in file: " + json.type);
-          return;
-        }
-
-        waveformBuffer = [];
-        t = 0;
-        clearCanvas();
-
-        alert("file loaded successfully. press play to start.");
-
-      } catch(err) {
-        alert("Invalid file or corrupt JSON.");
-      }
+    const dlLink = document.getElementById("downloadLink");
+    dlLink.href = url;
+    dlLink.download = filename;
+    dlLink.style.display = "inline";
+    dlLink.textContent = `download ${filename}`;
+    dlLink.onclick = () => {
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     };
-    reader.readAsText(file);
-    e.target.value = '';
-  });
+  }
 </script>
 </body>
 </html>
