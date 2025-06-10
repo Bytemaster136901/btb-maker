@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Byte's .btb maker</title>
+  <style>
+    body { font-family: monospace; background: #111; color: #eee; padding: 20px; }
+    input, textarea, select, button { width: 100%; margin: 5px 0; padding: 8px; background: #222; color: #eee; border: 1px solid #444; }
+    label { font-weight: bold; display: block; margin-top: 15px; }
+    #filePreview { background: #222; padding: 10px; white-space: pre-wrap; border: 1px solid #555; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h1>.btb maker 1.0.0</h1>
+
+  <label>Bytebeat Type:</label>
+  <select id="type">
+    <option value="btb">.btb</option>
+    <option value="sbtb">.sbtb</option>
+    <option value="fltb">.fltb</option>
+  </select>
+
+  <label>Code:</label>
+  <textarea id="code" rows="4">t*(t>>5|t>>8)</textarea>
+
+  <label>Sample Rate (Hz):</label>
+  <input type="number" id="hz" value="8000" />
+
+  <button onclick="save()"> Save .btb/.sbtb/.fltb</button>
+
+  <hr>
+  <label>Load a File:</label>
+  <input type="file" id="fileInput" accept=".btb,.sbtb,.fltb" />
+  <pre id="filePreview">No file loaded.</pre>
+
+  <script>
+    function save() {
+      const ext = document.getElementById("type").value;
+      const data = {
+        type: ext === "btb" ? "bytebeat" : ext === "sbtb" ? "signed" : "float",
+        hz: parseInt(document.getElementById("hz").value),
+        code: document.getElementById("code").value.trim()
+      };
+
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `${ext}-export.${ext}`;
+      a.click();
+    }
+
+    document.getElementById("fileInput").addEventListener("change", function () {
+      const file = this.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = e => {
+        try {
+          const data = JSON.parse(e.target.result);
+          document.getElementById("filePreview").textContent = JSON.stringify(data, null, 2);
+        } catch (err) {
+          document.getElementById("filePreview").textContent = "Uncaught (in BytebeatParser): Cannot read properties of undefined (reading 'hz') at BytebeatProject.loadFromJSON()";
+        }
+      };
+      reader.readAsText(file);
+    });
+  </script>
+</body>
+</html>
